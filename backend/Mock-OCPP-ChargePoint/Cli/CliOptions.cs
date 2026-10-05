@@ -6,6 +6,7 @@ public sealed class CliOptions
     public string IdPrefix { get; set; } = "CP";
     public string? ExplicitId { get; set; }
     public int Count { get; set; } = 1;
+    public int First { get; set; } = 1;
     public int Connectors { get; set; } = 1;
     public double PowerW { get; set; } = 7400;
 
@@ -26,6 +27,12 @@ public sealed class CliOptions
     public bool Wire { get; set; }
     public double TimeScale { get; set; } = 1.0;
 
+    /// <summary>When set, an HTTP API (and the bundled web UI, if built) is served on this port.</summary>
+    public int? HttpPort { get; set; }
+    public bool UrlSpecified { get; private set; }
+
+    public CliOptions Clone() => (CliOptions)MemberwiseClone();
+
     public bool ShowHelp { get; set; }
     public string? ParseError { get; set; }
 
@@ -40,10 +47,12 @@ public sealed class CliOptions
             {
                 switch (a)
                 {
-                    case "--url" or "-u": o.Url = Next(); break;
+                    case "--url" or "-u": o.Url = Next(); o.UrlSpecified = true; break;
+                    case "--http-port": o.HttpPort = int.Parse(Next()); break;
                     case "--id": o.ExplicitId = Next(); break;
                     case "--id-prefix": o.IdPrefix = Next(); break;
                     case "--count" or "-n": o.Count = int.Parse(Next()); break;
+                    case "--first": o.First = int.Parse(Next()); break;
                     case "--connectors" or "-c": o.Connectors = int.Parse(Next()); break;
                     case "--power" or "-p": o.PowerW = double.Parse(Next()); break;
                     case "--vendor": o.Vendor = Next(); break;
@@ -83,6 +92,7 @@ public sealed class CliOptions
       --id <id>                       exact charge point id (single unit only)
       --id-prefix <prefix>            id prefix for a fleet (default CP → CP0001…)
       --count, -n <n>                 number of charge points to run (default 1)
+      --first <n>                     number of the first fleet id (default 1; --first 6 -n 10 → CP0006…CP0015)
       --connectors, -c <n>            connectors per charge point (default 1)
       --power, -p <watts>             power the EVSE offers per connector (default 7400)
       --vendor / --model / --firmware  BootNotification identity fields
@@ -95,6 +105,9 @@ public sealed class CliOptions
       --passive                      connect, boot and heartbeat only; wait for the CSMS
       --speed <factor>               compress simulated time (10 = 10× meter speed)
       --wire                         print raw JSON frames
+      --http-port <n>                serve the web UI + API on this port. The fleet then starts
+                                     empty (connect from the UI) unless --url is also given;
+                                     the console prompt is disabled in this mode
       --help, -h
 
     With a single unit the interactive prompt is available (type `help` at cp>).

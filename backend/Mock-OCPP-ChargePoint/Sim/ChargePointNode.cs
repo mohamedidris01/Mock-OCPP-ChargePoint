@@ -19,6 +19,11 @@ public sealed class ChargePointNode : IAsyncDisposable
     public ChargePoint Cp { get; }
     public string Id { get; }
 
+    /// <summary>Human-readable log lines (without the [id] prefix).</summary>
+    public event Action<string>? Info;
+    /// <summary>Every raw OCPP frame: (outbound, json).</summary>
+    public event Action<bool, string>? Wire;
+
     public ChargePointNode(string id, CliOptions opt, Action<string> log)
     {
         _opt = opt;
@@ -31,10 +36,11 @@ public sealed class ChargePointNode : IAsyncDisposable
             Trace = opt.Wire,
         };
         _conn = new OcppConnection(opt.Url, id, connOpt);
-        _conn.Log += m => log($"[{id}] {m}");
+        _conn.Log += m => { log($"[{id}] {m}"); Info?.Invoke(m); };
         _conn.Trace += (outbound, text) =>
         {
             if (connOpt.Trace) log($"[{id}] {(outbound ? "→" : "←")} {text}");
+            Wire?.Invoke(outbound, text);
         };
 
         var identity = new ChargePointIdentity
@@ -46,7 +52,7 @@ public sealed class ChargePointNode : IAsyncDisposable
             SerialNumber = id,
         };
         Cp = new ChargePoint(_conn, identity, opt.Connectors, opt.PowerW);
-        Cp.Info += m => log($"[{id}] {m}");
+        Cp.Info += m => { log($"[{id}] {m}"); Info?.Invoke(m); };
         Cp.Config.Set("HeartbeatInterval", opt.HeartbeatInterval.ToString());
         Cp.Config.Set("MeterValueSampleInterval", opt.MeterInterval.ToString());
         foreach (var c in Cp.Connectors) c.Meter.TimeScale = opt.TimeScale;
