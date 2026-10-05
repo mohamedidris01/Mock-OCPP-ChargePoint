@@ -1,3 +1,4 @@
+using MockOcpp.Api;
 using MockOcpp.Cli;
 using MockOcpp.Sim;
 
@@ -21,10 +22,50 @@ void Log(string message)
     lock (logLock) Console.WriteLine(message);
 }
 
+// Web mode: serve the HTTP API (+ the built Angular UI from wwwroot, if present).
+// The fleet starts empty and is created from the UI; the console prompt is not used.
+if (opt.HttpPort is { } httpPort)
+{
+    // wwwroot is looked up next to the working directory first (dotnet run), then the binaries.
+    var contentRoot = new[] { Directory.GetCurrentDirectory(), AppContext.BaseDirectory }
+        .FirstOrDefault(d => Directory.Exists(Path.Combine(d, "wwwroot"))) ?? Directory.GetCurrentDirectory();
+
+    var builder = WebApplication.CreateBuilder(new WebApplicationOptions { Args = [], ContentRootPath = contentRoot });
+    builder.WebHost.UseUrls($"http://localhost:{httpPort}");
+    builder.Logging.SetMinimumLevel(LogLevel.Warning);
+    builder.Services.ConfigureHttpJsonOptions(o =>
+    {
+        foreach (var c in ApiEndpoints.Json.Converters) o.SerializerOptions.Converters.Add(c);
+    });
+    builder.Services.AddCors(o => o.AddDefaultPolicy(p => p
+        .WithOrigins("http://localhost:4200", "http://127.0.0.1:4200")
+        .AllowAnyHeader().AllowAnyMethod()));
+
+    var hub = new EventHub();
+    await using var fleet = new Fleet(hub, Log);
+
+    var app = builder.Build();
+    app.UseCors();
+    app.UseDefaultFiles();
+    app.UseStaticFiles();
+    app.MapApi(fleet, hub);
+    app.MapFallbackToFile("index.html");
+
+    if (opt.UrlSpecified)
+    {
+        var pre = opt.Clone();
+        await fleet.ConnectAsync(pre, replace: false);
+    }
+
+    Log($"web UI + API on http://localhost:{httpPort}  (Ctrl+C to stop)");
+    await app.RunAsync();
+    return 0;
+}
+
 // Build the fleet.
 var nodes = new List<ChargePointNode>();
-var width = Math.Max(4, opt.Count.ToString().Length);
-for (var i = 1; i <= opt.Count; i++)
+var width = Math.Max(4, (opt.First + opt.Count - 1).ToString().Length);
+for (var i = opt.First; i < opt.First + opt.Count; i++)
 {
     var id = opt.Count == 1 && opt.ExplicitId is not null
         ? opt.ExplicitId

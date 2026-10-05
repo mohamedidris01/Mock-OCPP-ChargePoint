@@ -1,0 +1,21 @@
+<header class="bar">
+  <strong class="brand">Mock OCPP Charge Point</strong>
+  <nav>
+    <a routerLink="/connect" routerLinkActive="active">Connect</a>
+    <a routerLink="/fleet" routerLinkActive="active">
+      Fleet @if (api.nodes().length) { <span class="count">{{ api.nodes().length }}</span> }
+    </a>
+    <a routerLink="/log" routerLinkActive="active">Message log</a>
+  </nav>
+  <span class="spacer"></span>
+  <span class="badge" [class.ok]="api.live()" [class.bad]="!api.live()"
+        [title]="api.live() ? 'Live stream connected' : 'Backend unreachable - retrying'">
+    {{ api.live() ? 'live' : 'offline' }}
+  </span>
+</header>
+
+<router-outlet />
+
+@if (api.notice(); as n) {
+  <div class="toast" [class.error]="n.kind === 'error'" role="status">{{ n.text }}</div>
+}

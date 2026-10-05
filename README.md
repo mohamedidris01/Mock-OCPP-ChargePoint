@@ -15,14 +15,66 @@ ws://csms.example.com/ocpp/<chargePointId>
 Sec-WebSocket-Protocol: ocpp1.6
 ```
 
-## Build & run
+## Repository layout
+
+| Folder | What it is |
+|---|---|
+| `backend/` | the C# mock charge point (.NET 8) — console app, plus the HTTP API the web UI talks to |
+| `frontend/` | the Angular web UI |
+| `run.ps1` / `run.cmd` | one command that builds and runs both |
+
+## Web UI (easiest way to run)
+
+Prerequisites: [.NET 8 SDK](https://dotnet.microsoft.com/download) and
+[Node.js 20+](https://nodejs.org). The Angular CLI does **not** need to be
+installed globally — it comes with the project's `node_modules`.
 
 ```powershell
+.\run.cmd            # builds the UI, starts everything, opens http://localhost:5080
+```
+
+`run.cmd` just calls `run.ps1` with the execution policy bypassed; use
+`.\run.ps1` directly if your policy allows scripts. The first run installs the
+frontend dependencies (a couple of minutes).
+
+The fleet starts **empty**. Open the **Connect** page, enter the CSMS base URL
+(e.g. `ws://127.0.0.1:8887/ocpp`) and how many charge points to start, then
+press *Connect*. Ids are the prefix plus a zero-padded number (`CP0001`…), and
+the id is appended to the URL, exactly like the CLI. The *Advanced* section
+carries the other CLI options (connectors, power, vendor/model/firmware,
+heartbeat and meter intervals, time speed, Basic auth, auto/passive mode).
+
+| Page | What you can do |
+|---|---|
+| Connect | start charge points, replace the fleet, disconnect all |
+| Fleet | per connector: plug/unplug, present tag, stop transaction, raise/clear fault, set power, suspend (EV/EVSE), resume, availability, send StatusNotification. Per charge point: boot, heartbeat, reconnect, disconnect |
+| Charge point | configuration keys (view and `set`), local auth list, charging profiles, reservations, DataTransfer, time scale |
+| Message log | live OCPP frames and log lines, filter by charge point / direction / text, click a row to expand the JSON |
+
+Options for `run.ps1`:
+
+```powershell
+.\run.ps1 -Mode dev                 # backend + `ng serve` with live reload on http://localhost:4200
+.\run.ps1 -SkipBuild                # reuse the last UI build
+.\run.ps1 -Port 6000 -NoBrowser     # different port, don't open a browser
+.\run.ps1 --url ws://127.0.0.1:8887/ocpp --count 3    # anything else goes to the mock: start 3 units immediately
+```
+
+The web server only listens on `localhost` and has no authentication — it is a
+local test tool. The API is documented by `backend/Mock-OCPP-ChargePoint/Api/ApiEndpoints.cs`
+(one endpoint per console command, e.g. `POST /api/cp/CP0001/connector/1/plug`);
+`GET /api/events` is a server-sent-event stream of state and log lines.
+
+## Build & run (console only)
+
+```powershell
+cd backend
 dotnet build
 dotnet run --project Mock-OCPP-ChargePoint -- --url ws://127.0.0.1:9000/ocpp --id CP0001
 ```
 
-The built executable is `mock-ocpp-cp.exe`.
+The built executable is `mock-ocpp-cp.exe`. Add `--http-port <n>` to also serve
+the web UI and API (the console prompt is then disabled).
 
 ### Quick start against the bundled Python mock CSMS
 
@@ -33,7 +85,10 @@ testing:
 # terminal 1
 python "..\CPP Projects\ocpp-charge-point\sim\tools\mock_csms.py" --port 8887
 
-# terminal 2
+# terminal 2 - web UI (then Connect to ws://127.0.0.1:8887/ocpp), or:
+.\run.cmd
+# ...console only:
+cd backend
 dotnet run --project Mock-OCPP-ChargePoint -- --url ws://127.0.0.1:8887/ocpp --id CP0001
 ```
 
@@ -59,6 +114,7 @@ dotnet run --project Mock-OCPP-ChargePoint -- --url ws://127.0.0.1:8887/ocpp --i
 | `--passive` | connect, boot and heartbeat only — let the CSMS drive |
 | `--speed <factor>` | compress simulated time (`10` = 10× meter speed) |
 | `--wire` | print raw JSON frames |
+| `--http-port <n>` | serve the web UI + API on this port (fleet starts empty unless `--url` is given) |
 | `--help, -h` | usage |
 
 Examples:
@@ -149,8 +205,17 @@ response and what compliance suites check for.
 ## Layout
 
 ```
-Mock-OCPP-ChargePoint/
-├── Program.cs                    arg parsing, fleet wiring, prompt vs headless
+backend/
+├── Mock-OCPP-ChargePoint.sln
+└── Mock-OCPP-ChargePoint/
+    ├── Program.cs                arg parsing, fleet wiring, prompt vs headless vs web
+    ├── Api/ApiEndpoints.cs       HTTP API + live event stream used by the web UI
+    ├── wwwroot/                  the built Angular UI (generated, git-ignored)
+    └── (below)
+frontend/                         Angular app (src/app: api.service.ts, pages/)
+run.ps1  run.cmd                  build + run everything
+
+backend/Mock-OCPP-ChargePoint/
 ├── Cli/
 │   ├── CliOptions.cs             every --flag
 │   └── Repl.cs                   the interactive prompt
@@ -166,5 +231,7 @@ Mock-OCPP-ChargePoint/
 │   ├── OcppClock.cs              CSMS clock offset + ISO 8601
 │   └── FeatureStores.cs          local auth list, charging profiles
 └── Sim/
-    └── ChargePointNode.cs        one unit: transport + tick loop + auto driver
+    ├── ChargePointNode.cs        one unit: transport + tick loop + auto driver
+    ├── Fleet.cs                  the running units; add/remove at runtime (web UI)
+    └── EventHub.cs               recent log/wire events + live fan-out
 ```

@@ -174,7 +174,7 @@ public sealed class Repl
         }
     }
 
-    private static bool TryParseError(string text, out ChargePointErrorCode code)
+    internal static bool TryParseError(string text, out ChargePointErrorCode code)
     {
         code = text.ToLowerInvariant() switch
         {
